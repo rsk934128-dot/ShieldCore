@@ -58,11 +58,23 @@ class ShieldCoreRobolectricTest {
         composeRule.onNodeWithTag("dashboard_list")
             .performScrollToNode(hasTestTag("realtime_shield_switch"))
         composeRule.onNodeWithTag("realtime_shield_switch").assertIsDisplayed()
+        composeRule.onNodeWithTag("dashboard_list")
+            .performScrollToNode(hasTestTag("low_battery_safety_switch"))
+        composeRule.onNodeWithTag("low_battery_safety_switch").assertIsDisplayed()
+        composeRule.onNodeWithTag("interval_chip_6").assertIsDisplayed()
+        composeRule.onNodeWithTag("run_background_check_button").assertIsDisplayed()
+
+        composeRule.onNodeWithTag("dashboard_list")
+            .performScrollToNode(hasTestTag("ram_usage_dashboard"))
+        composeRule.onNodeWithTag("ram_usage_percentage").assertIsDisplayed()
+        composeRule.onNodeWithTag("clear_ram_button").assertIsDisplayed()
+        composeRule.onNodeWithTag("clear_ram_button").performClick()
 
         composeRule.onNodeWithTag("dashboard_list")
             .performScrollToNode(hasTestTag("card_deep_scan"))
         composeRule.onNodeWithTag("card_deep_scan").assertIsDisplayed()
         composeRule.onNodeWithTag("card_junk_cleaner").assertIsDisplayed()
+        composeRule.waitForIdle()
 
         // Navigate to Deep Scan tab
         composeRule.onNodeWithTag("nav_scanner").performClick()

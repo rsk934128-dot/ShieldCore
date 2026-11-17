@@ -298,8 +298,12 @@ fun ShieldCoreApp(viewModel: SecurityViewModel = viewModel()) {
                                 onNavigateCleaner = { navigateTo(ROUTE_CLEANER) },
                                 onNavigateApps = { navigateTo(ROUTE_APPS) },
                                 onToggleShield = viewModel::toggleRealTimeShield,
+                                onToggleLowBatterySafety = viewModel::toggleLowBatterySafetyMode,
+                                onSelectAutoScanInterval = viewModel::setAutoScanIntervalHours,
+                                onRunBackgroundCheckNow = viewModel::runBackgroundCheckNow,
                                 onRefreshSignatures = viewModel::refreshSignatures,
-                                onClearHistory = viewModel::clearHistory
+                                onClearHistory = viewModel::clearHistory,
+                                onRamCleared = viewModel::showNotice
                             )
                         }
                         composable(ROUTE_SCANNER) {
@@ -319,7 +323,8 @@ fun ShieldCoreApp(viewModel: SecurityViewModel = viewModel()) {
                                 strings = strings,
                                 onToggleCategory = viewModel::toggleJunkCategory,
                                 onCleanSelected = viewModel::cleanSelectedJunk,
-                                onReAnalyze = viewModel::refreshDiagnostics
+                                onReAnalyze = viewModel::refreshDiagnostics,
+                                onRamCleared = viewModel::showNotice
                             )
                         }
                         composable(ROUTE_APPS) {

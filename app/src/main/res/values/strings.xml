@@ -12,4 +12,7 @@
     <string name="nav_scanner">Deep Scan</string>
     <string name="nav_cleaner">Cleaner</string>
     <string name="nav_apps">App Audit</string>
+    <string name="cd_low_battery_safety">Toggle low-battery safety mode for background auto-scans</string>
+    <string name="notif_channel_shield_name">Background Shield Alerts</string>
+    <string name="notif_channel_shield_desc">Security alerts when background WorkManager auto-scans detect suspicious files</string>
 </resources>

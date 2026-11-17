@@ -67,6 +67,8 @@ class SecurityRepository(
     }
 
     suspend fun setRealTimeShield(enabled: Boolean) = preferences.setRealTimeShield(enabled)
+    suspend fun setLowBatterySafetyMode(enabled: Boolean) = preferences.setLowBatterySafetyMode(enabled)
+    suspend fun setAutoScanIntervalHours(hours: Int) = preferences.setAutoScanIntervalHours(hours)
     suspend fun setDarkTheme(enabled: Boolean) = preferences.setDarkTheme(enabled)
     suspend fun setBengaliLanguage(enabled: Boolean) = preferences.setBengaliLanguage(enabled)
     suspend fun saveSelectedFolder(uri: String, label: String) = preferences.setSelectedFolder(uri, label)

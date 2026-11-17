@@ -1,5 +1,10 @@
 package com.example.ui.screens
 
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -27,11 +32,15 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Apps
+import androidx.compose.material.icons.rounded.BatteryChargingFull
+import androidx.compose.material.icons.rounded.BatterySaver
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.CleaningServices
 import androidx.compose.material.icons.rounded.DeleteSweep
 import androidx.compose.material.icons.rounded.GppGood
+import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Radar
+import androidx.compose.material.icons.rounded.Schedule
 import androidx.compose.material.icons.rounded.Shield
 import androidx.compose.material.icons.rounded.Stop
 import androidx.compose.material.icons.rounded.Storage
@@ -41,6 +50,9 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -58,16 +70,19 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
 import com.example.R
 import com.example.data.local.ScanHistoryEntity
 import com.example.data.model.ScanPhase
 import com.example.ui.SecurityUiState
 import com.example.ui.components.FeatureModuleCard
+import com.example.ui.components.RamUsageDashboard
 import com.example.ui.components.SecurityScoreRing
 import com.example.ui.formatBytes
 import com.example.ui.i18n.AppStrings
@@ -85,8 +100,12 @@ fun DashboardScreen(
     onNavigateCleaner: () -> Unit,
     onNavigateApps: () -> Unit,
     onToggleShield: (Boolean) -> Unit,
+    onToggleLowBatterySafety: (Boolean) -> Unit = {},
+    onSelectAutoScanInterval: (Int) -> Unit = {},
+    onRunBackgroundCheckNow: () -> Unit = {},
     onRefreshSignatures: () -> Unit,
     onClearHistory: () -> Unit,
+    onRamCleared: (String) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     BoxWithConstraints(modifier = modifier.fillMaxSize()) {
@@ -126,9 +145,18 @@ fun DashboardScreen(
                 ) {
                     item {
                         RealTimeShieldCard(
-                            enabled = uiState.realTimeShieldEnabled,
+                            uiState = uiState,
                             strings = strings,
-                            onToggle = onToggleShield
+                            onToggleShield = onToggleShield,
+                            onToggleLowBatterySafety = onToggleLowBatterySafety,
+                            onSelectInterval = onSelectAutoScanInterval,
+                            onRunBackgroundCheckNow = onRunBackgroundCheckNow
+                        )
+                    }
+                    item {
+                        RamUsageDashboard(
+                            isBengali = uiState.isBengali,
+                            onMemoryCleared = onRamCleared
                         )
                     }
                     item {
@@ -176,9 +204,18 @@ fun DashboardScreen(
                 }
                 item {
                     RealTimeShieldCard(
-                        enabled = uiState.realTimeShieldEnabled,
+                        uiState = uiState,
                         strings = strings,
-                        onToggle = onToggleShield
+                        onToggleShield = onToggleShield,
+                        onToggleLowBatterySafety = onToggleLowBatterySafety,
+                        onSelectInterval = onSelectAutoScanInterval,
+                        onRunBackgroundCheckNow = onRunBackgroundCheckNow
+                    )
+                }
+                item {
+                    RamUsageDashboard(
+                        isBengali = uiState.isBengali,
+                        onMemoryCleared = onRamCleared
                     )
                 }
                 item {
@@ -451,13 +488,61 @@ private fun TelemetryStatPill(
 
 @Composable
 private fun RealTimeShieldCard(
-    enabled: Boolean,
+    uiState: SecurityUiState,
     strings: AppStrings,
-    onToggle: (Boolean) -> Unit
+    onToggleShield: (Boolean) -> Unit,
+    onToggleLowBatterySafety: (Boolean) -> Unit,
+    onSelectInterval: (Int) -> Unit,
+    onRunBackgroundCheckNow: () -> Unit
 ) {
-    val accent = if (enabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+    val context = LocalContext.current
+    val notificationPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { _ ->
+        // Permission outcome handled gracefully; background scan still works locally without alerts
+    }
+
+    fun requestNotificationPermissionIfNeeded() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            val granted = ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.POST_NOTIFICATIONS
+            ) == PackageManager.PERMISSION_GRANTED
+            if (!granted) {
+                notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+            }
+        }
+    }
+
+    val enabled = uiState.realTimeShieldEnabled
+    val isBatteryPaused = enabled && uiState.shouldPauseForLowBattery
+    val accent = when {
+        !enabled -> MaterialTheme.colorScheme.onSurfaceVariant
+        isBatteryPaused -> MaterialTheme.colorScheme.tertiary
+        else -> MaterialTheme.colorScheme.primary
+    }
+
+    val batteryBadgeText = buildString {
+        append("${strings.batteryLabel} ${uiState.batteryLevelPercent}%")
+        if (uiState.isCharging) {
+            append(" • ${strings.chargingLabel}")
+        } else if (uiState.isPowerSaveMode) {
+            append(" • ${strings.powerSaverLabel}")
+        }
+    }
+
+    val statusLine = when {
+        !enabled -> strings.shieldPausedDesc
+        uiState.immediateWorkState == "RUNNING" -> strings.backgroundRunning
+        isBatteryPaused -> strings.backgroundPausedLowBattery
+        uiState.lastBackgroundScanSummary.isNotBlank() -> uiState.lastBackgroundScanSummary
+        else -> strings.backgroundIdle
+    }
+
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("realtime_shield_card"),
         shape = MaterialTheme.shapes.medium,
         border = BorderStroke(
             1.dp,
@@ -465,50 +550,222 @@ private fun RealTimeShieldCard(
         ),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
     ) {
-        Row(
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 14.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(14.dp)
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            Box(
-                modifier = Modifier
-                    .size(44.dp)
-                    .clip(CircleShape)
-                    .background(accent.copy(alpha = 0.14f)),
-                contentAlignment = Alignment.Center
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(14.dp)
             ) {
-                Icon(
-                    imageVector = Icons.Rounded.GppGood,
-                    contentDescription = strings.realTimeShield,
-                    tint = accent,
-                    modifier = Modifier.size(24.dp)
+                Box(
+                    modifier = Modifier
+                        .size(44.dp)
+                        .clip(CircleShape)
+                        .background(accent.copy(alpha = 0.14f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.GppGood,
+                        contentDescription = strings.realTimeShield,
+                        tint = accent,
+                        modifier = Modifier.size(24.dp)
+                    )
+                }
+                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text(
+                            text = strings.realTimeShield,
+                            style = MaterialTheme.typography.titleMedium,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Surface(
+                            shape = MaterialTheme.shapes.small,
+                            color = accent.copy(alpha = 0.14f)
+                        ) {
+                            Text(
+                                text = strings.backgroundEngineBadge,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = accent,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                            )
+                        }
+                    }
+                    Text(
+                        text = if (enabled) strings.shieldActiveDesc else strings.shieldPausedDesc,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Switch(
+                    checked = enabled,
+                    onCheckedChange = { checked ->
+                        if (checked) requestNotificationPermissionIfNeeded()
+                        onToggleShield(checked)
+                    },
+                    modifier = Modifier
+                        .minimumInteractiveComponentSize()
+                        .testTag("realtime_shield_switch"),
+                    colors = SwitchDefaults.colors(
+                        checkedThumbColor = MaterialTheme.colorScheme.onPrimary,
+                        checkedTrackColor = MaterialTheme.colorScheme.primary
+                    )
                 )
             }
-            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(
-                    text = strings.realTimeShield,
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-                Text(
-                    text = if (enabled) strings.shieldActiveDesc else strings.shieldPausedDesc,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+
+            AnimatedVisibility(visible = enabled) {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f))
+
+                    // Low-Battery Safety Mode Row
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Icon(
+                            imageVector = if (uiState.isCharging) {
+                                Icons.Rounded.BatteryChargingFull
+                            } else {
+                                Icons.Rounded.BatterySaver
+                            },
+                            contentDescription = null,
+                            tint = if (uiState.lowBatterySafetyMode) {
+                                MaterialTheme.colorScheme.secondary
+                            } else {
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                            },
+                            modifier = Modifier.size(22.dp)
+                        )
+                        Column(
+                            modifier = Modifier.weight(1f),
+                            verticalArrangement = Arrangement.spacedBy(2.dp)
+                        ) {
+                            Text(
+                                text = strings.lowBatterySafetyTitle,
+                                style = MaterialTheme.typography.labelLarge,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Text(
+                                text = "${strings.lowBatterySafetyDesc} ($batteryBadgeText)",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Switch(
+                            checked = uiState.lowBatterySafetyMode,
+                            onCheckedChange = onToggleLowBatterySafety,
+                            modifier = Modifier
+                                .minimumInteractiveComponentSize()
+                                .testTag("low_battery_safety_switch"),
+                            colors = SwitchDefaults.colors(
+                                checkedThumbColor = MaterialTheme.colorScheme.onSecondary,
+                                checkedTrackColor = MaterialTheme.colorScheme.secondary
+                            )
+                        )
+                    }
+
+                    // Auto-Scan Interval Chips + Run Now Action
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Rounded.Schedule,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Text(
+                                text = strings.autoScanIntervalLabel,
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            listOf(6, 12, 24).forEach { hours ->
+                                FilterChip(
+                                    selected = uiState.autoScanIntervalHours == hours,
+                                    onClick = { onSelectInterval(hours) },
+                                    label = { Text("${hours}h") },
+                                    modifier = Modifier.testTag("interval_chip_$hours")
+                                )
+                            }
+                        }
+                    }
+
+                    // Telemetry status banner + Run Background Check button
+                    Surface(
+                        shape = MaterialTheme.shapes.small,
+                        color = accent.copy(alpha = 0.08f),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 10.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Column(
+                                modifier = Modifier.weight(1f),
+                                verticalArrangement = Arrangement.spacedBy(2.dp)
+                            ) {
+                                Text(
+                                    text = statusLine,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = if (isBatteryPaused) {
+                                        MaterialTheme.colorScheme.tertiary
+                                    } else {
+                                        MaterialTheme.colorScheme.onSurface
+                                    },
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.testTag("background_shield_status")
+                                )
+                                Text(
+                                    text = "${strings.backgroundScheduled}: ${uiState.autoScanIntervalHours}h • ${uiState.periodicWorkState}",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            FilledTonalButton(
+                                onClick = {
+                                    requestNotificationPermissionIfNeeded()
+                                    onRunBackgroundCheckNow()
+                                },
+                                enabled = uiState.immediateWorkState != "RUNNING",
+                                modifier = Modifier
+                                    .minimumInteractiveComponentSize()
+                                    .testTag("run_background_check_button"),
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Rounded.PlayArrow,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = strings.runBackgroundCheck,
+                                    style = MaterialTheme.typography.labelMedium
+                                )
+                            }
+                        }
+                    }
+                }
             }
-            Switch(
-                checked = enabled,
-                onCheckedChange = onToggle,
-                modifier = Modifier
-                    .minimumInteractiveComponentSize()
-                    .testTag("realtime_shield_switch"),
-                colors = SwitchDefaults.colors(
-                    checkedThumbColor = MaterialTheme.colorScheme.onPrimary,
-                    checkedTrackColor = MaterialTheme.colorScheme.primary
-                )
-            )
         }
     }
 }

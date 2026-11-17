@@ -42,6 +42,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import com.example.data.model.JunkCategory
 import com.example.ui.SecurityUiState
+import com.example.ui.components.RamUsageDashboard
 import com.example.ui.formatBytes
 import com.example.ui.i18n.AppStrings
 
@@ -52,6 +53,7 @@ fun JunkCleanerScreen(
     onToggleCategory: (String) -> Unit,
     onCleanSelected: () -> Unit,
     onReAnalyze: () -> Unit,
+    onRamCleared: (String) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val storage = uiState.storageOverview
@@ -205,6 +207,13 @@ fun JunkCleanerScreen(
                         }
                     }
                 }
+            }
+
+            item {
+                RamUsageDashboard(
+                    isBengali = uiState.isBengali,
+                    onMemoryCleared = onRamCleared
+                )
             }
 
             items(uiState.junkCategories, key = { it.id }) { category ->

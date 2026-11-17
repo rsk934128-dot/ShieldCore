@@ -4,6 +4,7 @@ import android.app.Application
 import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import androidx.work.WorkInfo
 import com.example.data.engine.DeviceSecurityEngine
 import com.example.data.local.MalwareSignatureEntity
 import com.example.data.local.ScanHistoryEntity
@@ -17,6 +18,8 @@ import com.example.data.model.ScannedFileResult
 import com.example.data.model.StorageOverview
 import com.example.data.preferences.SecurityPreferences
 import com.example.data.repository.SecurityRepository
+import com.example.data.worker.BackgroundShieldScheduler
+import com.example.data.worker.BatterySafetyInspector
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -41,6 +44,17 @@ data class SecurityUiState(
     val lastReclaimedBytes: Long = 0L,
     val storageOverview: StorageOverview = StorageOverview(),
     val realTimeShieldEnabled: Boolean = true,
+    val lowBatterySafetyMode: Boolean = true,
+    val autoScanIntervalHours: Int = 12,
+    val lastBackgroundScanTime: Long = 0L,
+    val lastBackgroundScanStatus: String = "IDLE",
+    val lastBackgroundScanSummary: String = "",
+    val periodicWorkState: String = "ENQUEUED",
+    val immediateWorkState: String = "IDLE",
+    val batteryLevelPercent: Int = 100,
+    val isCharging: Boolean = false,
+    val isPowerSaveMode: Boolean = false,
+    val shouldPauseForLowBattery: Boolean = false,
     val isDarkTheme: Boolean = true,
     val isBengali: Boolean = false,
     val signatureCount: Int = 0,
@@ -84,16 +98,20 @@ data class SecurityUiState(
 
 class SecurityViewModel(application: Application) : AndroidViewModel(application) {
     private val repository: SecurityRepository
+    private val scheduler = BackgroundShieldScheduler(application)
     private val _uiState = MutableStateFlow(SecurityUiState())
     val uiState: StateFlow<SecurityUiState> = _uiState.asStateFlow()
 
     private var scanJob: Job? = null
+    private var lastSyncedScheduleKey: Triple<Boolean, Boolean, Int>? = null
 
     init {
         val db = SecurityDatabase.getInstance(application)
         val prefs = SecurityPreferences(application)
         val engine = DeviceSecurityEngine(application, db.securityDao())
         repository = SecurityRepository(db.securityDao(), prefs, engine)
+
+        refreshBatteryStatus()
 
         viewModelScope.launch {
             repository.ensureDefaultSignatures()
@@ -109,6 +127,25 @@ class SecurityViewModel(application: Application) : AndroidViewModel(application
             ) { prefsVal, sigCount, history, sigs ->
                 Quadruple(prefsVal, sigCount, history, sigs)
             }.collect { (prefsVal, sigCount, history, sigs) ->
+                val scheduleKey = Triple(
+                    prefsVal.realTimeShieldEnabled,
+                    prefsVal.lowBatterySafetyMode,
+                    prefsVal.autoScanIntervalHours
+                )
+                if (scheduleKey != lastSyncedScheduleKey) {
+                    lastSyncedScheduleKey = scheduleKey
+                    scheduler.syncPeriodicShield(
+                        enabled = prefsVal.realTimeShieldEnabled,
+                        lowBatterySafetyMode = prefsVal.lowBatterySafetyMode,
+                        intervalHours = prefsVal.autoScanIntervalHours
+                    )
+                }
+
+                val battery = BatterySafetyInspector.inspect(
+                    context = getApplication(),
+                    safetyModeEnabled = prefsVal.lowBatterySafetyMode
+                )
+
                 _uiState.update { state ->
                     val recalculatedScore = computeScore(
                         shieldEnabled = prefsVal.realTimeShieldEnabled,
@@ -118,6 +155,15 @@ class SecurityViewModel(application: Application) : AndroidViewModel(application
                     )
                     state.copy(
                         realTimeShieldEnabled = prefsVal.realTimeShieldEnabled,
+                        lowBatterySafetyMode = prefsVal.lowBatterySafetyMode,
+                        autoScanIntervalHours = prefsVal.autoScanIntervalHours,
+                        lastBackgroundScanTime = prefsVal.lastBackgroundScanTime,
+                        lastBackgroundScanStatus = prefsVal.lastBackgroundScanStatus,
+                        lastBackgroundScanSummary = prefsVal.lastBackgroundScanSummary,
+                        batteryLevelPercent = battery.levelPercent,
+                        isCharging = battery.isCharging,
+                        isPowerSaveMode = battery.isPowerSaveMode,
+                        shouldPauseForLowBattery = battery.shouldPauseAutoScan,
                         isDarkTheme = prefsVal.darkThemeEnabled,
                         isBengali = prefsVal.bengaliLanguage,
                         signatureDbVersion = prefsVal.signatureDbVersion,
@@ -128,6 +174,26 @@ class SecurityViewModel(application: Application) : AndroidViewModel(application
                         signatures = sigs,
                         securityScore = recalculatedScore
                     )
+                }
+            }
+        }
+
+        viewModelScope.launch {
+            scheduler.observePeriodicStatus().collect { info ->
+                _uiState.update { state ->
+                    state.copy(
+                        periodicWorkState = info?.state?.name ?: if (state.realTimeShieldEnabled) "ENQUEUED" else "CANCELLED"
+                    )
+                }
+            }
+        }
+
+        viewModelScope.launch {
+            scheduler.observeImmediateStatus().collect { info ->
+                val workState = info?.state?.name ?: "IDLE"
+                _uiState.update { it.copy(immediateWorkState = workState) }
+                if (info?.state == WorkInfo.State.SUCCEEDED) {
+                    refreshBatteryStatus()
                 }
             }
         }
@@ -458,6 +524,137 @@ class SecurityViewModel(application: Application) : AndroidViewModel(application
     fun toggleRealTimeShield(enabled: Boolean) {
         viewModelScope.launch {
             repository.setRealTimeShield(enabled)
+            val state = _uiState.value
+            scheduler.syncPeriodicShield(
+                enabled = enabled,
+                lowBatterySafetyMode = state.lowBatterySafetyMode,
+                intervalHours = state.autoScanIntervalHours
+            )
+            _uiState.update {
+                it.copy(
+                    statusNotice = if (it.isBengali) {
+                        if (enabled) "WorkManager ব্যাকগ্রাউন্ড অটো-স্ক্যান চালু হয়েছে" else "ব্যাকগ্রাউন্ড অটো-স্ক্যান বিরত রাখা হয়েছে"
+                    } else {
+                        if (enabled) "WorkManager background auto-scan enabled" else "Background auto-scan paused"
+                    }
+                )
+            }
+        }
+    }
+
+    fun toggleLowBatterySafetyMode(enabled: Boolean) {
+        viewModelScope.launch {
+            repository.setLowBatterySafetyMode(enabled)
+            val state = _uiState.value
+            scheduler.syncPeriodicShield(
+                enabled = state.realTimeShieldEnabled,
+                lowBatterySafetyMode = enabled,
+                intervalHours = state.autoScanIntervalHours
+            )
+            val battery = BatterySafetyInspector.inspect(
+                context = getApplication(),
+                safetyModeEnabled = enabled
+            )
+            _uiState.update {
+                it.copy(
+                    batteryLevelPercent = battery.levelPercent,
+                    isCharging = battery.isCharging,
+                    isPowerSaveMode = battery.isPowerSaveMode,
+                    shouldPauseForLowBattery = battery.shouldPauseAutoScan,
+                    statusNotice = if (it.isBengali) {
+                        if (enabled) "লো-ব্যাটারি সেফটি মোড চালু (<২০% বা সেভারে অটো-স্ক্যান বিরত)" else "লো-ব্যাটারি সেফটি মোড বন্ধ"
+                    } else {
+                        if (enabled) "Low-Battery Safety Mode enabled (<20% or Power Saver guard)" else "Low-Battery Safety Mode disabled"
+                    }
+                )
+            }
+        }
+    }
+
+    fun setAutoScanIntervalHours(hours: Int) {
+        viewModelScope.launch {
+            val safeHours = hours.coerceIn(6, 24)
+            repository.setAutoScanIntervalHours(safeHours)
+            val state = _uiState.value
+            scheduler.syncPeriodicShield(
+                enabled = state.realTimeShieldEnabled,
+                lowBatterySafetyMode = state.lowBatterySafetyMode,
+                intervalHours = safeHours
+            )
+            _uiState.update {
+                it.copy(
+                    statusNotice = if (it.isBengali) {
+                        "অটো-স্ক্যান সময়সূচি প্রতি $safeHours ঘণ্টা নির্ধারণ করা হয়েছে"
+                    } else {
+                        "Background auto-scan scheduled every ${safeHours}h"
+                    }
+                )
+            }
+        }
+    }
+
+    fun runBackgroundCheckNow() {
+        val state = _uiState.value
+        if (!state.realTimeShieldEnabled) {
+            _uiState.update {
+                it.copy(
+                    statusNotice = if (it.isBengali) {
+                        "প্রথমে রিয়েল-টাইম ব্যাকগ্রাউন্ড শিল্ড চালু করুন"
+                    } else {
+                        "Enable Real-time Shield first to run background auto-scan"
+                    }
+                )
+            }
+            return
+        }
+        val battery = BatterySafetyInspector.inspect(
+            context = getApplication(),
+            safetyModeEnabled = state.lowBatterySafetyMode
+        )
+        _uiState.update {
+            it.copy(
+                batteryLevelPercent = battery.levelPercent,
+                isCharging = battery.isCharging,
+                isPowerSaveMode = battery.isPowerSaveMode,
+                shouldPauseForLowBattery = battery.shouldPauseAutoScan
+            )
+        }
+        if (battery.shouldPauseAutoScan) {
+            _uiState.update {
+                it.copy(
+                    statusNotice = if (it.isBengali) {
+                        "লো-ব্যাটারি সেফটি সক্রিয় (${battery.levelPercent}%) — ব্যাটারি চার্জ হলে অটো-স্ক্যান চলবে"
+                    } else {
+                        "Paused by Low-Battery Safety (${battery.levelPercent}%) — resumes when battery recovers"
+                    }
+                )
+            }
+            return
+        }
+        scheduler.triggerImmediateCheck(lowBatterySafetyMode = state.lowBatterySafetyMode)
+        _uiState.update {
+            it.copy(
+                statusNotice = if (it.isBengali) {
+                    "WorkManager ব্যাকগ্রাউন্ড অটো-স্ক্যান কিউতে যুক্ত হয়েছে"
+                } else {
+                    "Background auto-scan queued via WorkManager"
+                }
+            )
+        }
+    }
+
+    fun refreshBatteryStatus() {
+        val battery = BatterySafetyInspector.inspect(
+            context = getApplication(),
+            safetyModeEnabled = _uiState.value.lowBatterySafetyMode
+        )
+        _uiState.update {
+            it.copy(
+                batteryLevelPercent = battery.levelPercent,
+                isCharging = battery.isCharging,
+                isPowerSaveMode = battery.isPowerSaveMode,
+                shouldPauseForLowBattery = battery.shouldPauseAutoScan
+            )
         }
     }
 
@@ -545,6 +742,10 @@ class SecurityViewModel(application: Application) : AndroidViewModel(application
 
     fun dismissNotice() {
         _uiState.update { it.copy(statusNotice = null) }
+    }
+
+    fun showNotice(message: String) {
+        _uiState.update { it.copy(statusNotice = message) }
     }
 
     private fun computeScore(
