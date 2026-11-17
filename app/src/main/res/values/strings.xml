@@ -1,0 +1,15 @@
+<resources>
+    <string name="app_name">ShieldCore</string>
+    <string name="cd_shield_backdrop">Security radar decorative backdrop</string>
+    <string name="cd_scan_button">Start or stop security scan</string>
+    <string name="cd_language_toggle">Switch between English and Bengali</string>
+    <string name="cd_theme_toggle">Toggle dark or light theme</string>
+    <string name="cd_shield_toggle">Toggle real-time protection shield</string>
+    <string name="cd_open_app_info">Open system app settings</string>
+    <string name="cd_pick_folder">Select folder to scan with Storage Access Framework</string>
+    <string name="cd_pick_file">Select file or APK to inspect</string>
+    <string name="nav_dashboard">Dashboard</string>
+    <string name="nav_scanner">Deep Scan</string>
+    <string name="nav_cleaner">Cleaner</string>
+    <string name="nav_apps">App Audit</string>
+</resources>

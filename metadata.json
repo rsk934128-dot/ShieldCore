@@ -1,0 +1,6 @@
+{
+  "name": "ShieldCore",
+  "description": "Android Virus Scanner, App Permission Auditor, and Storage Cleanup Dashboard",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

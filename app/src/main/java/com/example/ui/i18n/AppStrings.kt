@@ -1,0 +1,68 @@
+package com.example.ui.i18n
+
+data class AppStrings(
+    val isBn: Boolean
+) {
+    val appTitle = "ShieldCore"
+    val dashboardSubtitle = if (isBn) "রিয়েল-টাইম ডিভাইস নিরাপত্তা" else "Device Security & Cleanup"
+    val navDashboard = if (isBn) "ড্যাশবোর্ড" else "Dashboard"
+    val navDeepScan = if (isBn) "ডিপ স্ক্যান" else "Deep Scan"
+    val navCleaner = if (isBn) "ক্লিনার" else "Cleaner"
+    val navAppAudit = if (isBn) "অ্যাপ অডিট" else "App Audit"
+
+    val securityScoreLabel = if (isBn) "নিরাপত্তা স্কোর" else "Security Score"
+    val statusProtected = if (isBn) "ডিভাইস সুরক্ষিত" else "System Protected"
+    val statusAttention = if (isBn) "মনোযোগ প্রয়োজন" else "Review Suggested"
+    val statusAtRisk = if (isBn) "ঝুঁকি শনাক্ত হয়েছে" else "Action Required"
+    val statusScanning = if (isBn) "সিস্টেম স্ক্যান চলছে..." else "Scanning System..."
+
+    val scanNow = if (isBn) "স্ক্যান শুরু করুন" else "Scan Now"
+    val stopScan = if (isBn) "স্ক্যান থামান" else "Stop Scan"
+    val scanAgain = if (isBn) "পুনরায় স্ক্যান" else "Scan Again"
+
+    val phaseIdle = if (isBn) "ফুল সিস্টেম পরীক্ষার জন্য প্রস্তুত" else "Ready for full integrity check"
+    val phaseStorage = if (isBn) "ফাইল ও SHA-256 সিগনেচার স্ক্যান হচ্ছে..." else "Hashing files & checking SHA-256 DB..."
+    val phaseApps = if (isBn) "ইনস্টলড অ্যাপ পারমিশন অডিট চলছে..." else "Auditing installed app permissions..."
+    val phaseCache = if (isBn) "ক্যাশ ও টেম্পোরারি ফাইল বিশ্লেষণ..." else "Analyzing cache & temp artifacts..."
+    val phaseComplete = if (isBn) "স্ক্যান সম্পন্ন হয়েছে" else "Security check complete"
+
+    val realTimeShield = if (isBn) "রিয়েল-টাইম শিল্ড" else "Real-time Shield"
+    val shieldActiveDesc = if (isBn) "সক্রিয় • SHA-256 সিগনেচার ও অ্যাপ গার্ড চালু" else "Active • SHA-256 signature & permission guard"
+    val shieldPausedDesc = if (isBn) "বিরত • সুরক্ষা চালু করতে সুইচ অন করুন" else "Paused • Enable switch for continuous guard"
+
+    val deepScanTitle = if (isBn) "ডিপ স্ক্যান" else "Deep Scan"
+    val deepScanDesc = if (isBn) "ফাইল, APK ও ফোল্ডার হ্যাশ চেক" else "Hash check files, APKs & folders"
+    val junkCleanerTitle = if (isBn) "জাঙ্ক ক্লিনার" else "Junk Cleaner"
+    val junkCleanerDesc = if (isBn) "ক্যাশ ও টেম্প ফাইল পরিষ্কার করুন" else "Reclaim cache & temp artifacts"
+    val appManagerTitle = if (isBn) "অ্যাপ ম্যানেজার" else "App Manager"
+    val appManagerDesc = if (isBn) "সংবেদনশীল পারমিশন বিশ্লেষণ" else "Audit sensitive app permissions"
+    val signatureDbTitle = if (isBn) "ভাইরাস ডেটাবেস" else "Threat Database"
+    val signatureDbDesc = if (isBn) "লোকাল Room SHA-256 ইনডেক্স" else "Local Room SHA-256 index"
+
+    val storageHealth = if (isBn) "স্টোরেজ স্বাস্থ্য" else "Storage Health"
+    val freeSpace = if (isBn) "খালি" else "Free"
+    val usedSpace = if (isBn) "ব্যবহৃত" else "Used"
+    val recentScans = if (isBn) "সাম্প্রতিক স্ক্যান রিপোর্ট" else "Recent Scan Reports"
+    val noHistoryYet = if (isBn) "এখনো কোনো স্ক্যান করা হয়নি। প্রথম পরীক্ষা চালাতে Scan Now চাপুন।" else "No scans recorded yet. Tap Scan Now to run your first check."
+    val clearHistory = if (isBn) "ইতিহাস মুছুন" else "Clear"
+
+    val pickFolder = if (isBn) "ফোল্ডার স্ক্যান করুন" else "Scan Folder (SAF)"
+    val inspectFile = if (isBn) "ফাইল / APK পরীক্ষা" else "Inspect File / APK"
+    val updateSignatures = if (isBn) "ডেটাবেস আপডেট" else "Sync DB"
+    val filesScannedLabel = if (isBn) "স্ক্যানকৃত ফাইল" else "Files Checked"
+    val threatsLabel = if (isBn) "শনাক্তকৃত হুমকি" else "Threats"
+    val appsAuditedLabel = if (isBn) "অডিটকৃত অ্যাপ" else "Apps Audited"
+
+    val cleanSelected = if (isBn) "নির্বাচিত জাঙ্ক পরিষ্কার করুন" else "Clean Selected Junk"
+    val reAnalyze = if (isBn) "পুনরায় বিশ্লেষণ" else "Re-analyze"
+    val reclaimedPrefix = if (isBn) "সর্বশেষ পরিষ্কার:" else "Last Reclaimed:"
+
+    val filterAll = if (isBn) "সব অ্যাপ" else "All Apps"
+    val filterRisky = if (isBn) "উচ্চ ও মাঝারি ঝুঁকি" else "Elevated / High"
+    val filterSensors = if (isBn) "ক্যামেরা / মাইক / লোকেশন" else "Sensors"
+    val searchAppsHint = if (isBn) "অ্যাপ বা প্যাকেজ খুঁজুন..." else "Search app or package..."
+    val openAppSettings = if (isBn) "অ্যাপ ইনফো" else "App Info"
+    val systemAppBadge = if (isBn) "সিস্টেম" else "System"
+    val userAppBadge = if (isBn) "ইউজার" else "User"
+    val noPermissionsFlagged = if (isBn) "কোনো সংবেদনশীল পারমিশন পাওয়া যায়নি" else "No high-risk permissions requested"
+}
